@@ -6411,6 +6411,77 @@ impl RwaMarketplace {
 
         EventOperationExecuted { action }.publish(&env);
     }
+
+    // Issue #677: explicit pause / unpause x buy_shares coverage
+    #[test]
+    #[should_panic(expected = "Marketplace is paused")]
+    fn test_pause_blocks_buy_shares() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Buyer is fully able to buy when unpaused...
+        assert!(!c.is_paused());
+        // ...so the only reason for this panic is the global pause.
+        c.pause();
+        assert!(c.is_paused());
+        c.buy_shares(&te.buyer, &25, &te.token_id);
+    }
+
+    #[test]
+    fn test_unpause_restores_buy_shares() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.pause();
+        assert!(c.is_paused());
+        c.unpause();
+        assert!(!c.is_paused());
+
+        // The same buyer can purchase once the marketplace is resumed.
+        c.buy_shares(&te.buyer, &25, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 25);
+        assert_eq!(c.get_available_shares(), 975);
+    }
+
+    #[test]
+    #[should_panic(expected = "Purchases are currently paused")]
+    fn test_function_pause_blocks_buy_shares() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        // Granular pause for purchases only (FN_BUY_SHARES == 0); the
+        // marketplace itself stays observably unpaused.
+        c.pause_function(&0_u32);
+        assert!(!c.is_paused());
+        c.buy_shares(&te.buyer, &25, &te.token_id);
+    }
+
+    #[test]
+    fn test_function_unpause_restores_buy_shares() {
+        let te = setup();
+        let c = client(&te);
+        c.init(&te.admin, &te.token_id, &100, &1000);
+        mint(&te, &te.buyer, 100_000);
+        c.add_to_whitelist(&te.buyer);
+
+        c.pause_function(&0_u32);
+        assert!(!c.is_paused());
+        c.unpause_function(&0_u32);
+        assert!(!c.is_paused());
+
+        c.buy_shares(&te.buyer, &25, &te.token_id);
+        assert_eq!(c.get_shares(&te.buyer), 25);
+        assert_eq!(c.get_available_shares(), 975);
+    }
 }
 
 #[cfg(test)]

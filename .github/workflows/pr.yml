@@ -28,6 +28,9 @@ jobs:
   fuzz-tests:
     name: Soroban Fuzz Tests (proptest)
     runs-on: ubuntu-latest
+    # Issue #668: scope contract checks to pull requests touching contracts/
+    paths:
+      - 'contracts/**'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -54,4 +57,36 @@ jobs:
 
       - name: Run all contract tests
         run: cargo test --workspace --verbose
+        working-directory: contracts
+
+  # Issue #668: Build contracts to WebAssembly on pull requests touching
+  # contracts/. This verifies the release Wasm artifacts compile with the
+  # exact target used to build `contracts/nft` and the marketplace contract.
+  contract-wasm-build:
+    name: Contracts WebAssembly Build
+    runs-on: ubuntu-latest
+    paths:
+      - 'contracts/**'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain with wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-wasm-
+
+      - name: Build contracts (release wasm)
+        run: cargo build --workspace --release --target wasm32-unknown-unknown --verbose
         working-directory: contracts
